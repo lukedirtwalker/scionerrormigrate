@@ -103,7 +103,7 @@ func handleNewError(cursor *astutil.Cursor) (bool, bool, bool) {
 	if !ok {
 		return true, false, false
 	}
-	_, stringMsg := ce.Args[0].(*ast.BasicLit)
+	stringMsg := isStringArg(ce.Args[0])
 	if errIdent.Name == "nil" {
 		newArgs := []ast.Expr{ce.Args[0]}
 		if len(ce.Args) > 2 {
@@ -120,17 +120,19 @@ func handleNewError(cursor *astutil.Cursor) (bool, bool, bool) {
 				return true, true, false
 			}
 		}
-		cursor.Replace(&ast.CallExpr{
-			Fun: &ast.SelectorExpr{
-				X: &ast.Ident{
-					Name: "serrors",
+		cursor.Replace(
+			&ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X: &ast.Ident{
+						Name: "serrors",
+					},
+					Sel: &ast.Ident{
+						Name: replaceIdent,
+					},
 				},
-				Sel: &ast.Ident{
-					Name: replaceIdent,
-				},
-			},
-			Args: newArgs,
-		})
+				Args:     newArgs,
+				Ellipsis: ce.Ellipsis,
+			})
 		return true, true, true
 	}
 	// This is always serrors.WrapStr or Wrap depending on the first arg
@@ -148,7 +150,18 @@ func handleNewError(cursor *astutil.Cursor) (bool, bool, bool) {
 				Name: replaceIdent,
 			},
 		},
-		Args: ce.Args,
+		Args:     ce.Args,
+		Ellipsis: ce.Ellipsis,
 	})
 	return true, true, true
+}
+
+func isStringArg(expr ast.Expr) bool {
+	if _, basicStr := expr.(*ast.BasicLit); basicStr {
+		return true
+	}
+	if bin, ok := expr.(*ast.BinaryExpr); ok {
+		return isStringArg(bin.X) && isStringArg(bin.Y)
+	}
+	return false
 }
